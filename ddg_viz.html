@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<!-- <script src="https://d3js.org/d3.v2.min.js?2.9.3"></script>-->
+<script src="https://d3js.org/d3.v5.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@100;400;600;700;900&display=swap" rel="stylesheet">
+<style>
+
+h1 {
+  font-family:"Raleway";
+  color:#565656;
+}
+
+body {
+  font-family:"Raleway";
+  background-color:#DDECFE;
+}
+
+#pagetitle {
+  position:absolute;
+  left:2%;
+  top:0%;
+}
+
+.links {
+  stroke: #aaa;
+}
+
+.nodelabel {
+  pointer-events: none;
+  font-family: "Raleway";
+  font-size: 12px;
+  fill: #555;
+}
+
+.typelabel {
+  pointer-events: none;
+  font-family: "Raleway";
+  font-size: 20px;
+  font-weight: 700;
+  /*fill: #555;*/
+}
+
+.node circle{
+  stroke:#fff;
+  stroke-width:6px;
+  fill:#555;
+}
+
+
+.demand {
+  stroke:#CFAA95;
+  fill:#CFAA95;
+  /*r:35;*/
+}
+
+.metric {
+  stroke:#CFB995;
+  fill:#CFB995;
+  /*r:25;*/
+}
+
+.element {
+  stroke:#657588;
+  fill:#657588;  
+  /*r: 15;*/
+}
+
+.dataset {
+  stroke:#7D6288;
+  fill:#7D6288;
+  /*r: 10;*/
+}
+
+.source {
+  stroke:#62887D;
+  fill:#62887D;
+  /*r: 10;*/
+}
+
+.faded {
+  opacity:0.15;
+}
+
+.highlighted {
+  stroke: #000;
+  stroke-width:2px;
+}
+
+.tooltip { 
+    position: absolute;     
+    text-align: left;     
+    width: 200px;          
+    min-height: 100px;         
+    padding: 10px;       
+    font: 12px sans-serif;    
+    background: white; 
+    border: 1px dotted #ccc;
+    border-radius: 8px;     
+    pointer-events: none;     
+}
+
+#info {
+  position:absolute;
+  width:19%;
+  height:70%;
+  top:15%;
+  left:1%;
+  background-color:#fcfcfc;
+}
+
+#viewport {
+  position:absolute;
+  left:0%;
+  top:10%;
+  width:100%;
+  height:90%;
+  /*border:1px dotted #cccccc;*/
+  border-radius: 5px;
+  background-color:#fcfcfc;
+}
+
+#logo {
+  position:absolute;
+  top:2%;
+  right:2%;
+  width:200px;
+  height:auto;
+}
+
+#logo_image {
+    flex-shrink: 0;
+    width: 100%;
+    height: 100%
+}
+
+.infobox {
+  position:absolute;
+  left:0%;
+  top:10%;
+  width:10%;
+  height:90%;
+  padding:20px;
+  background-color:#f5f3fe;
+  opacity:0;
+  overflow: wrap
+}
+
+</style>
+<body>
+<div id="logo">
+  <img src="brighthive_logo.png" id="logo_image">
+</div>
+<h1 id="pagetitle">Data Flow Explorer</h1>
+<div id="viewport">
+</div>
+<script>
+
+/*
+
+TODO:
+- Adjust force repulsion according to number of nodes
+- Fix up coloring of type labels to be not ugly
+- Resize nodes according to window size or number of nodes
+- function to size nodes
+- nodes better leaned up to columns
+- force manybody adjusted according to node size and other parameters
+- static highlight on click
+- organize
+- search functionality :-(
+
+*/
+
+ ///////////////////////////////////////////////
+////////////////// Setup  /////////////////////
+///////////////////////////////////////////////
+
+
+
+var pinnings = false;       // Toggle: Have any nodes have been pinned?
+var reverseToggle = false;  // Toggle: Has the user pressed "r" to reverse the chain of highlighted nodes?
+
+
+// get dimensions of viewport div, set d3 width and height variables
+var viewport_bounds = document.getElementById("viewport").getBoundingClientRect();
+var width = viewport_bounds.width;
+var height = viewport_bounds.height;
+
+// There are (currently) five node types. We space them evenly across the width of the viewport.
+var x_positions = {"demand":width/6,"metric":2*width/6,"element":3*width/6, "dataset":4*width/6, "source":5*width/6};
+
+// Append SVG
+var svg = d3.select("#viewport").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+
+// NEW FUNCTION REC: hold down key to reverse getChildren
+
+// Here: Everything after graph file is read ing
+// Everything inside .then() follows reading the JSON
+d3.json("edgelist.json").then(function(graph) {
+
+  // Get node radii based on how many nodes there are of each type
+  // Loop over node types. Send along the list of nodes to calculateForces and then set the radius according to how many there are.
+  var node_radii = {'demand':0,'metric':0,'element':0,'dataset':0,'source':0}
+  for (var type in node_radii) {
+    node_radii[type] = calculateForces(graph.nodes.filter(function(x) { return(x.type == type) }).length, height);
+  }
+
+
+  // Start simulation
+  var simulation = d3.forceSimulation()
+      .force("link", d3.forceLink().id(function(d) { return d.id; }).strength(0.1))
+      .force("collide", d3.forceCollide(function(d) { return node_radii[d.type] + 5; }).strength(0.9))
+      .force("centerline", d3.forceY(height/2).strength(0.5))
+      .force("column", d3.forceX(function (d) { return(x_positions[d.type]); }).strength(2))
+      .force("charge", d3.forceManyBody().strength(-300));
+      //.force("center", d3.forceCenter(width / 2, height / 2))
+
+
+  // apply simulation to nodes and links
+  simulation.nodes(graph.nodes).on("tick", ticked);
+  simulation.force("link").links(graph.links);
+
+  // Set up these dictionaries: they will store children and parent nodes (respectively) of mouseover'd nodes
+  // These are first-degree connections only; we do a search on mouseover instead of building out all paths at load time
+  var children_directory = {}; // right now this is just first degree connections
+  var parents_directory = {};
+
+ ///////////////////////////////////////////////
+///////// Append nodes, links, labels  /////////
+///////////////////////////////////////////////
+
+  ////// Links ///////
+  var link = svg.append("g")
+    .attr("class", "links")
+    .selectAll("line")
+    .data(graph.links)
+    .enter().append("line")
+    .attr("stroke-width", function(d) { return Math.sqrt(d.value); })
+    .attr('marker-end','url(#arrowhead)')
+    .each(function (d) {
+      // create children dictionary
+      if(typeof children_directory[d.source.id] === 'undefined') {
+          children_directory[d.source.id] = [d.target.id];
+        } else {
+          children_directory[d.source.id].push(d.target.id);
+      }
+
+      // create parents dictionary
+      if(typeof parents_directory[d.target.id] === 'undefined') {
+        parents_directory[d.target.id] = [d.source.id];
+      } else {
+        parents_directory[d.target.id].push(d.source.id);
+      }
+  });
+
+  /////// Nodes: g Objects /////////
+  // Append node objects -- these contain both circles and text
+  var node = svg.append("g")
+    .attr("class", "nodes")
+    .selectAll("g")
+    .data(graph.nodes)
+    .enter()
+    .append("g");
+
+
+  /////// Nodes: Circles //////
+  // Append circle to node object--this is graphically the node
+  var circle = node.append("circle")
+    .attr("class", function(d) { return d.type; })
+    .attr("r", function(d) { return node_radii[d.type]; })
+    .classed('pinned',false)
+    .on("mouseover", function(d) {
+
+        focused = this; // set this global variable as soon as there's a mouseover
+
+        // fading and highlighting
+        if (reverseToggle === false) {
+          current_fadechain = getChildren(d.id, children_directory);
+        } else {
+          // for parents instead of children
+          current_fadechain = getChildren(d.id, parents_directory); // need to change source to target for links below!
+        }
+
+        if (pinnings == false) {
+
+          circle.classed("faded", true);
+          link.classed("faded", true);
+          circle.filter(function(f) { return(current_fadechain.includes(f.id)) }).classed("faded", false).classed("highlighted",true);
+          link.filter(function(f) { return(current_fadechain.includes(reverseToggle == false ? f.source.id : f.target.id)) }).classed("faded", false);
+
+        } else { // e.g. some nodes have been pinned
+
+          //circle.classed("faded", false);
+          //link.classed("faded", false);
+          circle.filter(function(f) { return(current_fadechain.includes(f.id)) }).classed("faded", false).classed("highlighted",true);
+          link.filter(function(f) { return(current_fadechain.includes(reverseToggle == false ? f.source.id : f.target.id)) }).classed("faded", false);
+
+        }
+
+        // show tooltip
+        tooltip
+          .style("opacity",0.7)
+          .style('left', d3.event.pageX + 20 + 'px')
+          .style('top', d3.event.pageY - 120 + 'px')
+          .html(tooltip_fill(d));
+
+    })
+    .on('mouseout', function (d) {
+        // fading and highlighting
+
+        if (pinnings == false) {
+          circle.classed("faded", false);
+          link.classed("faded", false);
+          circle.classed("highlighted",function(f) { return(d3.select(this).classed('pinned') === true ? true : false)} );
+      } else {
+          circle.classed("faded", function(f) { return(d3.select(this).classed('pinned') === true ? false : true)});
+          link.classed("faded", function(f) { return(d3.select(this).classed('pinned') === true ? false : true)});
+          circle.classed("highlighted",function(f) { return(d3.select(this).classed('pinned') === true ? true : false)} );
+      }
+
+        focused = null;             // unset this variable
+        tooltip.style('opacity',0); // fade out tooltip
+    })
+    .on('click', function(d) {
+        // class current chain
+        pinnings = true;
+        circle.filter(function(f) { return(current_fadechain.includes(f.id)) }).classed("pinned", true);
+        link.filter(function(f) { return(current_fadechain.includes(reverseToggle == false ? f.source.id : f.target.id)) }).classed("pinned", true);
+        d3.event.stopPropagation();
+
+    });
+
+  /////// Nodes: Labels //////
+  var label = node.append("text")
+    .attr('class','nodelabel')
+    //.text(function(d) { if (d.type == "demand") { return(d.label) } })
+    .attr('dx','-50px')
+    .attr('dy', '20px');
+
+  ////// Arrowheads on links ///////
+  svg.append('defs').append('marker')
+      .attr("id",'arrowhead')
+      .attr('viewBox','-0 -5 10 10') //the bound of the SVG viewport for the current SVG fragment. defines a coordinate system 10 wide and 10 high starting on (0,-5)
+       .attr('refX',10) // x coordinate for the reference point of the marker. If circle is bigger, this need to be bigger.
+       .attr('refY',0)
+       .attr('orient','auto')
+          .attr('markerWidth',13)
+          .attr('markerHeight',13)
+          .attr('xoverflow','visible')
+      .append('svg:path')
+      .attr('d', 'M 0,-3 L 6 ,0 L 0,3')
+      .attr('fill', '#999')
+      .style('stroke','none');
+
+  ////// Add infobox to contain node information ///////
+  /*var infobox =  d3.select("body").append("div")
+                    .attr('class','infobox')
+                    .attr('opacity',0);*/
+
+ ///////////////////////////////////////////////
+///////// Append Tooltip and Typelabels  /////////
+///////////////////////////////////////////////
+
+////// Tooltip ///////
+var tooltip = d3.select("body").append("div") 
+    .attr("class", "tooltip")
+    .style("opacity", 0);
+
+////// Type labels for nodes ///////
+// this, below, is the worst code I have ever written
+svg
+  .selectAll(".typelabel")
+  .data(['Demand','Metric','Element','Dataset','Source'])
+  .enter()
+  .append("text")
+  .attr("class","typelabel")
+  .text(function(x) { return(x)})
+  .attr('x', function(d) { return(x_positions[d.toLowerCase()] - this.getBBox().width/2)}) // text is written from left to right -- move it back left by half its width to center it
+  .attr('y', '10%')
+  .style('fill',function(d) { return({"demand":"#CFAA95","metric":"#CFB995","element":"#657588","dataset":"#7D6288","source":"#62887D"}[d.toLowerCase()]); });
+
+
+///////////////////////////////////////////////
+///////////////// Listeners  //////////////////
+///////////////////////////////////////////////
+
+
+  // keydown handlers
+  d3.select("body")
+    .on("keydown", function() {
+    if(d3.event.keyCode === 82){ // "r"
+      reverseToggle = true;
+      var evt = new MouseEvent("mouseover");
+      focused.dispatchEvent(evt);
+    }
+  })
+  .on("keyup", function() {
+    if(d3.event.keyCode === 82){
+      reverseToggle = false;
+      var evt = new MouseEvent("mouseout");
+      focused.dispatchEvent(evt);
+    }
+  });
+
+  // listen for click on background
+  svg
+    .on('click', function(d) {
+      pinnings = false;
+          circle.classed("faded", false);
+          link.classed("faded", false);
+          circle.classed("pinned", false);
+          link.classed("pinned", false);
+          circle.classed("highlighted", false);
+    })
+
+  /////////////////////////////////////
+  // Functions //
+  /////////////////////////////////////
+
+
+  // Fill infobox with info
+  function tooltip_fill(node) {
+    filler = "<b>" + node.label + "</b><p>" + node.description + "</p>"
+    return(filler)
+  }
+
+  // Reposition nodes on tick of force simulation
+  function ticked() {
+    link
+        .attr("x1", function(d) { return d.source.x; })
+        .attr("y1", function(d) { return d.source.y; })
+        .attr("x2", function(d) { return d.target.x; })
+        .attr("y2", function(d) { return d.target.y; });
+
+    /* We use translate here instead of x,y attributes because nodes with labels are now g objects (as opposed to the above). From a StackOverflow answer:
+    "When node is a single shape element, we just adjust its positional attributes in the tick function. For eg. if it is a circle, we update its cx and cy attributes.
+    ....The positional attribute of g element is transform". Constraint added here to keep nodes within window. */
+    node
+        .attr("transform", function(d) {
+          return "translate(" + d.x + "," + Math.max(10, Math.min(height - 10, d.y)) + ")";
+        });
+
+  }
+
+  d3.select(window).on("resize", function() {resize()});
+
+  // restart sim to resize?
+  function resize() {
+
+    viewport_bounds = document.getElementById("viewport").getBoundingClientRect();
+    viewport_width = viewport_bounds.width;
+    viewport_height = viewport_bounds.height;
+    width = viewport_width
+    height = viewport_height;
+
+    svg.attr("width", width).attr("height", height); // reset svg width and height
+
+    x_positions = {"demand":width/6,"metric":2*width/6,"element":3*width/6, "dataset":4*width/6, "source":5*width/6}; // reset node type columns
+
+    // restart simulation
+    simulation
+    .force("link", d3.forceLink().id(function(d) { return d.id; }).strength(0.1))
+    .force("collide", d3.forceCollide(function(d) { return node_radii[d.type] + 5; }).strength(0.7))
+    .force("centerline", d3.forceY(height/2).strength(0.5))
+    .force("column", d3.forceX(function (d) { return(x_positions[d.type]); }).strength(3))
+    .alpha(0.1)
+    .restart();
+
+    // replace node type labels
+    // replace node column labels
+      svg
+        .selectAll(".typelabel")
+        .attr('x', function(d) { return(x_positions[d.toLowerCase()])})//; x_positions[d.toLowerCase()]; })
+
+  }
+
+});
+
+  /////////////////////////////////////
+  // More Functions //
+  /////////////////////////////////////
+
+/* We want to be able to fit as many nodes vertically in the window as we can as long as they're >2px in radius
+and as long as they have >2px between them. So we size nodes according to the number of nodes. */
+function calculateForces(num_nodes, window_height) {
+  //var size_hierarchy = ['Demand','Metric','Element','Dataset','Source'];
+  var min_radius = 2;
+  var max_radius = 20;
+  var min_gap = 2;
+  var min_diameter = 2 * min_radius;
+  var node_size = 3*window_height/((num_nodes * (min_diameter + min_gap)))
+  return(Math.min(node_size,max_radius));
+}
+
+/* For a given node, and a dictionaruy giving first-degree targets for all nodes,
+this function will find all downstream nodes. It's basically a kind of hacky breadth-first search. */
+function getChildren(parent_node_name, children_directory) {
+  var current_children = [parent_node_name];
+
+  for (var i = 0; i < current_children.length; i++) {
+    var new_children = children_directory[current_children[i]];
+
+    if (typeof new_children != 'undefined') {
+      current_children = current_children.concat(new_children);
+    } else {
+      current_children = current_children;
+    }
+  }
+  return(current_children)
+}
+
+function dragstarted(d) {
+  if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = d.x;
+  d.fy = d.y;
+}
+
+function dragged(d) {
+  d.fx = d3.event.x;
+  d.fy = d3.event.y;
+}
+
+function dragended(d) {
+  if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = null;
+  d.fy = null;
+}
+
+</script>
+</body>
+</html
