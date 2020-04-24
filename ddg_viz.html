@@ -175,10 +175,10 @@ TODO:
 ///////////////////////////////////////////////
 
 
-
+// Toggles and stuff
 var pinnings = false;       // Toggle: Have any nodes have been pinned?
 var reverseToggle = false;  // Toggle: Has the user pressed "r" to reverse the chain of highlighted nodes?
-
+var focused = null;         // ID of currently mouseover'd node
 
 // get dimensions of viewport div, set d3 width and height variables
 var viewport_bounds = document.getElementById("viewport").getBoundingClientRect();
@@ -194,10 +194,7 @@ var svg = d3.select("#viewport").append("svg")
     .attr("height", height);
 
 
-// NEW FUNCTION REC: hold down key to reverse getChildren
-
-// Here: Everything after graph file is read ing
-// Everything inside .then() follows reading the JSON
+// Here: Everything after graph file is reading. Everything inside .then() follows reading the JSON
 d3.json("edgelist.json").then(function(graph) {
 
   // Get node radii based on how many nodes there are of each type
@@ -416,7 +413,7 @@ svg
     })
 
   /////////////////////////////////////
-  // Functions //
+  // Functions - inside promise//
   /////////////////////////////////////
 
 
@@ -446,14 +443,12 @@ svg
 
   d3.select(window).on("resize", function() {resize()});
 
-  // restart sim to resize?
+  // reposition nodes and labels and restart simulation on window
   function resize() {
 
     viewport_bounds = document.getElementById("viewport").getBoundingClientRect();
-    viewport_width = viewport_bounds.width;
-    viewport_height = viewport_bounds.height;
-    width = viewport_width
-    height = viewport_height;
+    width = viewport_bounds.width;
+    height = viewport_bounds.height;
 
     svg.attr("width", width).attr("height", height); // reset svg width and height
 
@@ -477,9 +472,11 @@ svg
   }
 
 });
+////////////////
+//
 
   /////////////////////////////////////
-  // More Functions //
+  // More Functions: outside promise//
   /////////////////////////////////////
 
 /* We want to be able to fit as many nodes vertically in the window as we can as long as they're >2px in radius
@@ -511,6 +508,8 @@ function getChildren(parent_node_name, children_directory) {
   return(current_children)
 }
 
+/*
+// drag events not currently used
 function dragstarted(d) {
   if (!d3.event.active) simulation.alphaTarget(0.3).restart();
   d.fx = d.x;
@@ -527,6 +526,7 @@ function dragended(d) {
   d.fx = null;
   d.fy = null;
 }
+*/
 
 </script>
 </body>
