@@ -21,7 +21,7 @@ body {
   top:0%;
 }
 
-.links {
+.link {
   stroke: #aaa;
 }
 
@@ -38,12 +38,6 @@ body {
   font-size: 20px;
   font-weight: 700;
   /*fill: #555;*/
-}
-
-.node circle{
-  stroke:#fff;
-  stroke-width:6px;
-  fill:#555;
 }
 
 
@@ -197,79 +191,110 @@ var svg = d3.select("#viewport").append("svg")
 // Here: Everything after graph file is reading. Everything inside .then() follows reading the JSON
 d3.json("edgelist.json").then(function(graph) {
 
+  // setup
+  var nodes_list_full = graph.nodes;
+  var links_list_full = graph.links;
+
   // Get node radii based on how many nodes there are of each type
   // Loop over node types. Send along the list of nodes to calculateForces and then set the radius according to how many there are.
   var node_radii = {'demand':0,'metric':0,'element':0,'dataset':0,'source':0}
   for (var type in node_radii) {
-    node_radii[type] = calculateForces(graph.nodes.filter(function(x) { return(x.type == type) }).length, height);
+    node_radii[type] = calculateForces(nodes_list_full.filter(function(x) { return(x.type == type) }).length, height);
   }
-
-
-  // Start simulation
-  var simulation = d3.forceSimulation()
-      .force("link", d3.forceLink().id(function(d) { return d.id; }).strength(0.1))
-      .force("collide", d3.forceCollide(function(d) { return node_radii[d.type] + 5; }).strength(0.9))
-      .force("centerline", d3.forceY(height/2).strength(0.5))
-      .force("column", d3.forceX(function (d) { return(x_positions[d.type]); }).strength(2))
-      .force("charge", d3.forceManyBody().strength(-300));
-      //.force("center", d3.forceCenter(width / 2, height / 2))
-
-
-  // apply simulation to nodes and links
-  simulation.nodes(graph.nodes).on("tick", ticked);
-  simulation.force("link").links(graph.links);
 
   // Set up these dictionaries: they will store children and parent nodes (respectively) of mouseover'd nodes
   // These are first-degree connections only; we do a search on mouseover instead of building out all paths at load time
   var children_directory = {}; // right now this is just first degree connections
   var parents_directory = {};
 
+  // create children and parents directories
+  links_list_full.forEach(function (d) {
+      // create children dictionary
+      if(typeof children_directory[d.source] === 'undefined') {
+          children_directory[d.source] = [d.target];
+        } else {
+          children_directory[d.source].push(d.target);
+      }
+
+      // create parents dictionary
+      if(typeof parents_directory[d.target] === 'undefined') {
+        parents_directory[d.target] = [d.source];
+      } else {
+        parents_directory[d.target].push(d.source);
+      }
+  });
+
+    // initial -- demand nodes only
+  var start_node_ids = []
+  var nodes_list_start = nodes_list_full.filter(function (x) { if(x.type == "demand") { start_node_ids.push(x['id']) } ;return (x.type == "demand")});
+  var links_list_start = []
+
+ ///////////////////////////////////////////////
+/////////     Start simulation          /////////
+///////////////////////////////////////////////
+
+addElements(nodes_list_start, links_list_start);
+
+
+
  ///////////////////////////////////////////////
 ///////// Append nodes, links, labels  /////////
 ///////////////////////////////////////////////
 
-  ////// Links ///////
-  var link = svg.append("g")
-    .attr("class", "links")
-    .selectAll("line")
-    .data(graph.links)
-    .enter().append("line")
-    .attr("stroke-width", function(d) { return Math.sqrt(d.value); })
-    .attr('marker-end','url(#arrowhead)')
-    .each(function (d) {
-      // create children dictionary
-      if(typeof children_directory[d.source.id] === 'undefined') {
-          children_directory[d.source.id] = [d.target.id];
-        } else {
-          children_directory[d.source.id].push(d.target.id);
-      }
+function addElements(nodes_list, links_list) {
 
-      // create parents dictionary
-      if(typeof parents_directory[d.target.id] === 'undefined') {
-        parents_directory[d.target.id] = [d.source.id];
-      } else {
-        parents_directory[d.target.id].push(d.source.id);
-      }
-  });
+simulation = d3.forceSimulation()
+    .force("link", d3.forceLink().id(function(d) { return d.id; }).strength(0.1))
+    .force("collide", d3.forceCollide(function(d) { return node_radii[d.type] + 5; }).strength(0.9))
+    .force("centerline", d3.forceY(height/2).strength(0.5))
+    .force("column", d3.forceX(function (d) { return(x_positions[d.type]); }).strength(2))
+    .force("charge", d3.forceManyBody().strength(-300))
+    .on("tick", ticked);
+
+
+  ////// Links ///////
+
+  link = svg.selectAll('.link').data(links_list, function(d) { return d.target.id }); ///////
+
+  link.exit().remove()
+
+  linkEnter = link.enter().append("line")
+    .attr("class", "link")
+    .attr("stroke-width", function(d) { return Math.sqrt(d.value); })
+    .attr('marker-end',function(m) { return('url(#arrowhead)') });
+
+ ////// Links: arrowheads ///////
+ // these need to be resized according to node radius
+  svg.append('defs').append('marker')
+      .attr("id",'arrowhead')
+      .attr('viewBox','-0 -5 10 10') //the bound of the SVG viewport for the current SVG fragment. defines a coordinate system 10 wide and 10 high starting on (0,-5)
+       .attr('refX', 10) // x coordinate for the reference point of the marker. If circle is bigger, this need to be bigger.
+       .attr('refY',0)
+       .attr('orient','auto')
+          .attr('markerWidth',13)
+          .attr('markerHeight',13)
+          .attr('xoverflow','visible')
+      .append('svg:path')
+      .attr('d', 'M 0,-3 L 6 ,0 L 0,3')
+      .attr('fill', '#999')
+      .style('stroke','none');
+
+    link = linkEnter.merge(link);
 
   /////// Nodes: g Objects /////////
   // Append node objects -- these contain both circles and text
-  var node = svg.append("g")
-    .attr("class", "nodes")
-    .selectAll("g")
-    .data(graph.nodes)
-    .enter()
-    .append("g");
 
+  node = svg.selectAll('.node').data(nodes_list, function(d) { return(d.id) });
+  node.exit().remove()
+  var nodeEnter = node.enter().append("g").attr("class","node");//.attr('id', function(d) { return(d.id)});
 
   /////// Nodes: Circles //////
   // Append circle to node object--this is graphically the node
-  var circle = node.append("circle")
+  circle = nodeEnter.append("circle")
     .attr("class", function(d) { return d.type; })
     .attr("r", function(d) { return node_radii[d.type]; })
     .classed('pinned',false)
     .on("mouseover", function(d) {
-
         focused = this; // set this global variable as soon as there's a mouseover
 
         // fading and highlighting
@@ -322,34 +347,31 @@ d3.json("edgelist.json").then(function(graph) {
     })
     .on('click', function(d) {
         // class current chain
+        // don't pin if it's a demand node...?
+
+        // FIX HIGHLIGHTING!
         pinnings = true;
-        circle.filter(function(f) { return(current_fadechain.includes(f.id)) }).classed("pinned", true);
-        link.filter(function(f) { return(current_fadechain.includes(reverseToggle == false ? f.source.id : f.target.id)) }).classed("pinned", true);
+        circle.filter(function(f) { return(current_fadechain.includes(f.id)) }).classed("pinned", true).style('opacity',1);
+        link.filter(function(f) { return(current_fadechain.includes(reverseToggle == false ? f.source.id : f.target.id)) }).classed("pinned", true).style('opacity',1);
         d3.event.stopPropagation();
+        label.remove(); // remove labels
+
+        // here - we remove this node and then add it to the nodes that need to be draw. otherwise the link will be drawn on top of the node which looks bad.
+        this.remove();
+        nodes_list_full.push(d)
+        addElements(nodes_list_full, links_list_full);
+
 
     });
 
-  /////// Nodes: Labels //////
-  var label = node.append("text")
-    .attr('class','nodelabel')
-    //.text(function(d) { if (d.type == "demand") { return(d.label) } })
-    .attr('dx','-50px')
-    .attr('dy', '20px');
+    node = nodeEnter.merge(node)
 
-  ////// Arrowheads on links ///////
-  svg.append('defs').append('marker')
-      .attr("id",'arrowhead')
-      .attr('viewBox','-0 -5 10 10') //the bound of the SVG viewport for the current SVG fragment. defines a coordinate system 10 wide and 10 high starting on (0,-5)
-       .attr('refX',10) // x coordinate for the reference point of the marker. If circle is bigger, this need to be bigger.
-       .attr('refY',0)
-       .attr('orient','auto')
-          .attr('markerWidth',13)
-          .attr('markerHeight',13)
-          .attr('xoverflow','visible')
-      .append('svg:path')
-      .attr('d', 'M 0,-3 L 6 ,0 L 0,3')
-      .attr('fill', '#999')
-      .style('stroke','none');
+    /////// Nodes: Labels //////
+    label = nodeEnter.append("text")
+      .attr('class','nodelabel')
+      .text(function(d) { if (d.type == "demand") { return(d.label) } })
+      .attr('dx','30px')
+      .attr('dy', '0px');
 
   ////// Add infobox to contain node information ///////
   /*var infobox =  d3.select("body").append("div")
@@ -364,6 +386,12 @@ d3.json("edgelist.json").then(function(graph) {
 var tooltip = d3.select("body").append("div") 
     .attr("class", "tooltip")
     .style("opacity", 0);
+
+  simulation.nodes(nodes_list);
+  simulation.force("link").links(links_list);
+
+
+} // END ADDELEMENTS FUNCTION
 
 ////// Type labels for nodes ///////
 // this, below, is the worst code I have ever written
@@ -425,19 +453,29 @@ svg
 
   // Reposition nodes on tick of force simulation
   function ticked() {
+    /* We use translate here instead of x,y attributes because nodes with labels are now g objects (as opposed to the above). From a StackOverflow answer:
+    "When node is a single shape element, we just adjust its positional attributes in the tick function. For eg. if it is a circle, we update its cx and cy attributes.
+
+    ....The positional attribute of g element is transform". Constraint added here to keep nodes within window. */
+
+    node.each(function(d) { if(d.type == "demand") { d.x = x_positions[d.type]; }}); // we pin demand nodes to the same x-coordinate
+
+    node
+        .attr("transform", function(d) {
+          if (d.type != "demand") {
+            return "translate(" + d.x + "," + Math.max(10, Math.min(height - 10, d.y)) + ")";
+          } else {
+            d.x = x_positions['demand']
+            return "translate(" + x_positions['demand'] + "," + Math.max(10, Math.min(height - 10, d.y)) + ")"; 
+          }
+        });
+
     link
         .attr("x1", function(d) { return d.source.x; })
         .attr("y1", function(d) { return d.source.y; })
         .attr("x2", function(d) { return d.target.x; })
         .attr("y2", function(d) { return d.target.y; });
 
-    /* We use translate here instead of x,y attributes because nodes with labels are now g objects (as opposed to the above). From a StackOverflow answer:
-    "When node is a single shape element, we just adjust its positional attributes in the tick function. For eg. if it is a circle, we update its cx and cy attributes.
-    ....The positional attribute of g element is transform". Constraint added here to keep nodes within window. */
-    node
-        .attr("transform", function(d) {
-          return "translate(" + d.x + "," + Math.max(10, Math.min(height - 10, d.y)) + ")";
-        });
 
   }
 
@@ -459,7 +497,7 @@ svg
     .force("link", d3.forceLink().id(function(d) { return d.id; }).strength(0.1))
     .force("collide", d3.forceCollide(function(d) { return node_radii[d.type] + 5; }).strength(0.7))
     .force("centerline", d3.forceY(height/2).strength(0.5))
-    .force("column", d3.forceX(function (d) { return(x_positions[d.type]); }).strength(3))
+    .force("column", d3.forceX(function (d) { return(x_positions[d.type]); }).strength(5))
     .alpha(0.1)
     .restart();
 
@@ -472,8 +510,20 @@ svg
   }
 
 });
-////////////////
-//
+////////////////////////////
+//         //\\           //
+//        //  \\          //
+//       //    \\         //
+//      //      \\        //
+//     ============       //
+//         | |            //
+//         | |            //
+//         | |            //
+//         | |            //
+//         ===            //
+//  This is the end of the//
+//  JSON promise!         //
+////////////////////////////
 
   /////////////////////////////////////
   // More Functions: outside promise//
