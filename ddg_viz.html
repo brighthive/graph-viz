@@ -233,16 +233,6 @@ d3.json("edgelist.json").then(function(graph) {
 /////////     Start simulation          /////////
 ///////////////////////////////////////////////
 
-addElements(nodes_list_start, links_list_start);
-
-
-
- ///////////////////////////////////////////////
-///////// Append nodes, links, labels  /////////
-///////////////////////////////////////////////
-
-function addElements(nodes_list, links_list) {
-
 simulation = d3.forceSimulation()
     .force("link", d3.forceLink().id(function(d) { return d.id; }).strength(0.1))
     .force("collide", d3.forceCollide(function(d) { return node_radii[d.type] + 5; }).strength(0.9))
@@ -252,16 +242,32 @@ simulation = d3.forceSimulation()
     .on("tick", ticked);
 
 
+nodes_list = []
+links_list = []
+
+addElements(nodes_list_start, links_list_start);
+
+
+
+ ///////////////////////////////////////////////
+///////// Append nodes, links, labels  /////////
+///////////////////////////////////////////////
+
+function addElements(new_nodes, new_links) {
+
+  nodes_list = nodes_list.concat(new_nodes)
+  links_list = links_list.concat(new_links)
+
   ////// Links ///////
-
+  
   link = svg.selectAll('.link').data(links_list, function(d) { return d.target.id }); ///////
-
   link.exit().remove()
-
   linkEnter = link.enter().append("line")
     .attr("class", "link")
     .attr("stroke-width", function(d) { return Math.sqrt(d.value); })
     .attr('marker-end',function(m) { return('url(#arrowhead)') });
+  link = linkEnter.merge(link);
+
 
  ////// Links: arrowheads ///////
  // these need to be resized according to node radius
@@ -278,8 +284,6 @@ simulation = d3.forceSimulation()
       .attr('d', 'M 0,-3 L 6 ,0 L 0,3')
       .attr('fill', '#999')
       .style('stroke','none');
-
-    link = linkEnter.merge(link);
 
   /////// Nodes: g Objects /////////
   // Append node objects -- these contain both circles and text
@@ -305,7 +309,7 @@ simulation = d3.forceSimulation()
           current_fadechain = getChildren(d.id, parents_directory); // need to change source to target for links below!
         }
 
-        if (pinnings == false) {
+        /*if (pinnings == false) {
 
           circle.classed("faded", true);
           link.classed("faded", true);
@@ -326,13 +330,13 @@ simulation = d3.forceSimulation()
           .style("opacity",0.7)
           .style('left', d3.event.pageX + 20 + 'px')
           .style('top', d3.event.pageY - 120 + 'px')
-          .html(tooltip_fill(d));
+          .html(tooltip_fill(d));*/
 
     })
     .on('mouseout', function (d) {
         // fading and highlighting
 
-        if (pinnings == false) {
+        /*if (pinnings == false) {
           circle.classed("faded", false);
           link.classed("faded", false);
           circle.classed("highlighted",function(f) { return(d3.select(this).classed('pinned') === true ? true : false)} );
@@ -340,7 +344,7 @@ simulation = d3.forceSimulation()
           circle.classed("faded", function(f) { return(d3.select(this).classed('pinned') === true ? false : true)});
           link.classed("faded", function(f) { return(d3.select(this).classed('pinned') === true ? false : true)});
           circle.classed("highlighted",function(f) { return(d3.select(this).classed('pinned') === true ? true : false)} );
-      }
+      }*/
 
         focused = null;             // unset this variable
         tooltip.style('opacity',0); // fade out tooltip
@@ -350,21 +354,19 @@ simulation = d3.forceSimulation()
         // don't pin if it's a demand node...?
 
         // FIX HIGHLIGHTING!
-        pinnings = true;
+        /*pinnings = true;
         circle.filter(function(f) { return(current_fadechain.includes(f.id)) }).classed("pinned", true).style('opacity',1);
-        link.filter(function(f) { return(current_fadechain.includes(reverseToggle == false ? f.source.id : f.target.id)) }).classed("pinned", true).style('opacity',1);
+        link.filter(function(f) { return(current_fadechain.includes(reverseToggle == false ? f.source.id : f.target.id)) }).classed("pinned", true).style('opacity',1);*/
         d3.event.stopPropagation();
-        label.remove(); // remove labels
+        //label.remove(); // remove labels
 
-        // here - we remove this node and then add it to the nodes that need to be draw. otherwise the link will be drawn on top of the node which looks bad.
-        this.remove();
-        nodes_list_full.push(d)
-        addElements(nodes_list_full, links_list_full);
+        var new_nodes = nodes_list_full.filter(function(x) { return((current_fadechain.includes(x.id) || x.type == "demand")); } );
+        var new_links = links_list_full.filter(function(x) { return(current_fadechain.includes(x.source)); } );
+
+        addElements(new_nodes, new_links);//links_list_full);
 
 
     });
-
-    node = nodeEnter.merge(node)
 
     /////// Nodes: Labels //////
     label = nodeEnter.append("text")
@@ -373,6 +375,7 @@ simulation = d3.forceSimulation()
       .attr('dx','30px')
       .attr('dy', '0px');
 
+node = nodeEnter.merge(node);
   ////// Add infobox to contain node information ///////
   /*var infobox =  d3.select("body").append("div")
                     .attr('class','infobox')
@@ -389,6 +392,8 @@ var tooltip = d3.select("body").append("div")
 
   simulation.nodes(nodes_list);
   simulation.force("link").links(links_list);
+  simulation.alpha(0.1)
+    .restart();
 
 
 } // END ADDELEMENTS FUNCTION
