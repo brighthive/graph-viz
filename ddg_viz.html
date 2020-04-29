@@ -93,25 +93,36 @@ body {
     pointer-events: none;     
 }
 
-#info {
+#container {
   position:absolute;
-  width:19%;
-  height:70%;
-  top:15%;
-  left:1%;
-  background-color:#fcfcfc;
+  left:0%;
+  width:100%;
+  top: 10%;
+  height:90%;
+  padding:0px;
+  margin:0px;
 }
 
 #viewport {
   position:absolute;
-  left:0%;
-  top:10%;
-  width:100%;
-  height:90%;
-  /*border:1px dotted #cccccc;*/
-  border-radius: 5px;
+  width:80%;
+  height:100%;
   background-color:#fcfcfc;
+  flex:1;
+  margin:0px;
+  padding:0px;
 }
+
+#infobox {
+  position:absolute;
+  left:80%;
+  background-color:#fcfcfc;
+  height:100%;
+  width:20%;
+  overflow:scroll;
+  font-size:12px;
+}
+
 
 #logo {
   position:absolute;
@@ -127,25 +138,17 @@ body {
     height: 100%
 }
 
-.infobox {
-  position:absolute;
-  left:0%;
-  top:10%;
-  width:10%;
-  height:90%;
-  padding:20px;
-  background-color:#f5f3fe;
-  opacity:0;
-  overflow: wrap
-}
-
 </style>
 <body>
-<div id="logo">
-  <img src="brighthive_logo.png" id="logo_image">
-</div>
-<h1 id="pagetitle">Data Flow Explorer</h1>
-<div id="viewport">
+<div id="page-container">
+  <div id="logo">
+    <img src="brighthive_logo.png" id="logo_image">
+  </div>
+  <h1 id="pagetitle">Data Flow Explorer</h1>
+  <div id="container">
+      <div id="viewport"></div>
+      <div id="infobox"></div>
+  </div>
 </div>
 <script>
 
@@ -247,6 +250,7 @@ links_list = []
 
 addElements(nodes_list_start, links_list_start);
 
+var infobox_content = d3.select("#infobox").append("div").style("padding","10px");
 
 
  ///////////////////////////////////////////////
@@ -257,6 +261,7 @@ function addElements(new_nodes, new_links) {
 
   nodes_list = nodes_list.concat(new_nodes)
   links_list = links_list.concat(new_links)
+
 
   ////// Links ///////
   
@@ -298,6 +303,7 @@ function addElements(new_nodes, new_links) {
     .attr("class", function(d) { return d.type; })
     .attr("r", function(d) { return node_radii[d.type]; })
     .classed('pinned',false)
+    .attr('expanded',false)
     .on("mouseover", function(d) {
         focused = this; // set this global variable as soon as there's a mouseover
 
@@ -309,18 +315,18 @@ function addElements(new_nodes, new_links) {
           current_fadechain = getChildren(d.id, parents_directory); // need to change source to target for links below!
         }
 
-        /*if (pinnings == false) {
+        if (pinnings == false) {
 
-          circle.classed("faded", true);
+          d3.selectAll("circle").classed("faded", true);
           link.classed("faded", true);
-          circle.filter(function(f) { return(current_fadechain.includes(f.id)) }).classed("faded", false).classed("highlighted",true);
+          d3.selectAll("circle").filter(function(f) { return(current_fadechain.includes(f.id)) }).classed("faded", false).classed("highlighted",true);
           link.filter(function(f) { return(current_fadechain.includes(reverseToggle == false ? f.source.id : f.target.id)) }).classed("faded", false);
 
         } else { // e.g. some nodes have been pinned
 
           //circle.classed("faded", false);
           //link.classed("faded", false);
-          circle.filter(function(f) { return(current_fadechain.includes(f.id)) }).classed("faded", false).classed("highlighted",true);
+          d3.selectAll("circle").filter(function(f) { return(current_fadechain.includes(f.id)) }).classed("faded", false).classed("highlighted",true);
           link.filter(function(f) { return(current_fadechain.includes(reverseToggle == false ? f.source.id : f.target.id)) }).classed("faded", false);
 
         }
@@ -330,21 +336,21 @@ function addElements(new_nodes, new_links) {
           .style("opacity",0.7)
           .style('left', d3.event.pageX + 20 + 'px')
           .style('top', d3.event.pageY - 120 + 'px')
-          .html(tooltip_fill(d));*/
+          .html(tooltip_fill(d));
 
     })
     .on('mouseout', function (d) {
         // fading and highlighting
 
-        /*if (pinnings == false) {
-          circle.classed("faded", false);
+        if (pinnings == false) {
+          d3.selectAll("circle").classed("faded", false);
           link.classed("faded", false);
-          circle.classed("highlighted",function(f) { return(d3.select(this).classed('pinned') === true ? true : false)} );
+          d3.selectAll("circle").classed("highlighted",function(f) { return(d3.select(this).classed('pinned') === true ? true : false)} );
       } else {
-          circle.classed("faded", function(f) { return(d3.select(this).classed('pinned') === true ? false : true)});
+          d3.selectAll("circle").classed("faded", function(f) { return(d3.select(this).classed('pinned') === true ? false : true)});
           link.classed("faded", function(f) { return(d3.select(this).classed('pinned') === true ? false : true)});
-          circle.classed("highlighted",function(f) { return(d3.select(this).classed('pinned') === true ? true : false)} );
-      }*/
+          d3.selectAll("circle").classed("highlighted",function(f) { return(d3.select(this).classed('pinned') === true ? true : false)} );
+      }
 
         focused = null;             // unset this variable
         tooltip.style('opacity',0); // fade out tooltip
@@ -354,18 +360,24 @@ function addElements(new_nodes, new_links) {
         // don't pin if it's a demand node...?
 
         // FIX HIGHLIGHTING!
-        /*pinnings = true;
-        circle.filter(function(f) { return(current_fadechain.includes(f.id)) }).classed("pinned", true).style('opacity',1);
-        link.filter(function(f) { return(current_fadechain.includes(reverseToggle == false ? f.source.id : f.target.id)) }).classed("pinned", true).style('opacity',1);*/
+        if (d.expanded == true) {
+          pinnings = true;
+          d3.selectAll("circle").filter(function(f) { return(current_fadechain.includes(f.id)) }).classed("pinned", true).style('opacity',1);
+          link.filter(function(f) { return(current_fadechain.includes(reverseToggle == false ? f.source.id : f.target.id)) }).classed("pinned", true).style('opacity',1);
+          //label.remove(); // remove labels
+        }
         d3.event.stopPropagation();
-        //label.remove(); // remove labels
-
-        var new_nodes = nodes_list_full.filter(function(x) { return((current_fadechain.includes(x.id) || x.type == "demand")); } );
+        var new_nodes = nodes_list_full.filter(function(x) { return((current_fadechain.includes(x.id)))});
         var new_links = links_list_full.filter(function(x) { return(current_fadechain.includes(x.source)); } );
 
-        addElements(new_nodes, new_links);//links_list_full);
 
+        d.expanded = true;
+        addElements(new_nodes, new_links);
 
+        var evt = new MouseEvent("mouseout");
+        tooltip.style('opacity',0); // fade out tooltip
+        d3.selectAll('.nodelabel').remove();
+        infobox_content.html(writeTree(nodes_list, links_list));
     });
 
     /////// Nodes: Labels //////
@@ -392,8 +404,13 @@ var tooltip = d3.select("body").append("div")
 
   simulation.nodes(nodes_list);
   simulation.force("link").links(links_list);
-  simulation.alpha(0.1)
-    .restart();
+  simulation
+  .force("link", d3.forceLink().id(function(d) { return d.id; }).strength(0.1))
+  .force("collide", d3.forceCollide(function(d) { return node_radii[d.type] + 5; }).strength(0.7))
+  .force("centerline", d3.forceY(height/2).strength(0.5))
+  .force("column", d3.forceX(function (d) { return(x_positions[d.type]); }).strength(5))
+  .alpha(0.1)
+  .restart();
 
 
 } // END ADDELEMENTS FUNCTION
@@ -514,6 +531,11 @@ svg
 
   }
 
+  function moveLabels() {
+    d3.selectAll(".nodelabel")
+      .attr('dx','-30px');
+  }
+
 });
 ////////////////////////////
 //         //\\           //
@@ -529,6 +551,21 @@ svg
 //  This is the end of the//
 //  JSON promise!         //
 ////////////////////////////
+
+  function writeTree(current_nodes, current_Links) {
+    var html = ""
+    var color_dict = {"demand":"#CFAA95","metric":"#CFB995","element":"#657588","dataset":"#7D6288","source":"#62887D"};
+    var current_nodes = current_nodes.filter(function(x) { return(x.expanded == true || x.type != "demand") });
+
+    var demands = current_nodes.filter(function(x) { return(x.type == "demand")});
+
+    for (let node in current_nodes) {
+      current_node = current_nodes[node];
+      var html = html + "<b style = 'color:" + color_dict[current_node['type']] + "'>" + current_node['label'] + "</b><br><br>";
+    }
+    console.log(html);
+    return(html)
+  }
 
   /////////////////////////////////////
   // More Functions: outside promise//
