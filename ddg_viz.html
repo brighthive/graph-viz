@@ -44,31 +44,26 @@ body {
 .demand {
   stroke:#CFAA95;
   fill:#CFAA95;
-  /*r:35;*/
 }
 
 .metric {
   stroke:#CFB995;
   fill:#CFB995;
-  /*r:25;*/
 }
 
 .element {
   stroke:#657588;
   fill:#657588;  
-  /*r: 15;*/
 }
 
 .dataset {
   stroke:#7D6288;
   fill:#7D6288;
-  /*r: 10;*/
 }
 
 .source {
   stroke:#62887D;
   fill:#62887D;
-  /*r: 10;*/
 }
 
 .faded {
@@ -92,35 +87,15 @@ body {
     border-radius: 8px;     
     pointer-events: none;     
 }
-
-#container {
-  position:absolute;
-  left:0%;
-  width:100%;
-  top: 10%;
-  height:90%;
-  padding:0px;
-  margin:0px;
-}
-
 #viewport {
   position:absolute;
-  width:80%;
-  height:100%;
+  top:10%;
+  left:0;
+  width:100%;
+  height:90%;
   background-color:#fcfcfc;
-  flex:1;
   margin:0px;
   padding:0px;
-}
-
-#infobox {
-  position:absolute;
-  left:80%;
-  background-color:#fcfcfc;
-  height:100%;
-  width:20%;
-  overflow:scroll;
-  font-size:12px;
 }
 
 
@@ -133,9 +108,9 @@ body {
 }
 
 #logo_image {
-    flex-shrink: 0;
-    width: 100%;
-    height: 100%
+  flex-shrink: 0;
+  width: 100%;
+  height: 100%
 }
 
 </style>
@@ -145,27 +120,9 @@ body {
     <img src="brighthive_logo.png" id="logo_image">
   </div>
   <h1 id="pagetitle">Data Flow Explorer</h1>
-  <div id="container">
       <div id="viewport"></div>
-      <div id="infobox"></div>
-  </div>
 </div>
 <script>
-
-/*
-
-TODO:
-- Adjust force repulsion according to number of nodes
-- Fix up coloring of type labels to be not ugly
-- Resize nodes according to window size or number of nodes
-- function to size nodes
-- nodes better leaned up to columns
-- force manybody adjusted according to node size and other parameters
-- static highlight on click
-- organize
-- search functionality :-(
-
-*/
 
  ///////////////////////////////////////////////
 ////////////////// Setup  /////////////////////
@@ -190,17 +147,23 @@ var svg = d3.select("#viewport").append("svg")
     .attr("width", width)
     .attr("height", height);
 
+var node_radii = {'demand':0,'metric':0,'element':0,'dataset':0,'source':0};
+
+ ///////////////////////////////////////////////
+///////// Main promise on JSON load  ///////////
+///////////////////////////////////////////////
 
 // Here: Everything after graph file is reading. Everything inside .then() follows reading the JSON
 d3.json("edgelist.json").then(function(graph) {
 
-  // setup
-  var nodes_list_full = graph.nodes;
-  var links_list_full = graph.links;
+////////////////////////////////////////////////
+///  Set up node radii and link directories  ///
+///////////////////////////////////////////////
+  nodes_list_full = graph.nodes;
+  links_list_full = graph.links;
 
   // Get node radii based on how many nodes there are of each type
   // Loop over node types. Send along the list of nodes to calculateForces and then set the radius according to how many there are.
-  var node_radii = {'demand':0,'metric':0,'element':0,'dataset':0,'source':0}
   for (var type in node_radii) {
     node_radii[type] = calculateForces(nodes_list_full.filter(function(x) { return(x.type == type) }).length, height);
   }
@@ -232,6 +195,23 @@ d3.json("edgelist.json").then(function(graph) {
   var nodes_list_start = nodes_list_full.filter(function (x) { if(x.type == "demand") { start_node_ids.push(x['id']) } ;return (x.type == "demand")});
   var links_list_start = []
 
+
+ ///////////////////////////////////////////////
+/////////     Add type labels          /////////
+///////////////////////////////////////////////
+// this, below, is the worst code I have ever written
+svg
+  .selectAll(".typelabel")
+  .data(['Demand','Metric','Element','Dataset','Source'])
+  .enter()
+  .append("text")
+  .attr("class","typelabel")
+  .text(function(x) { return(x)})
+  .attr('x', function(d) { return(x_positions[d.toLowerCase()] - this.getBBox().width/2)}) // text is written from left to right -- move it back left by half its width to center it
+  .attr('y', '10%')
+  .style('fill',function(d) { return({"demand":"#CFAA95","metric":"#CFB995","element":"#657588","dataset":"#7D6288","source":"#62887D"}[d.toLowerCase()]); });
+
+
  ///////////////////////////////////////////////
 /////////     Start simulation          /////////
 ///////////////////////////////////////////////
@@ -244,24 +224,39 @@ simulation = d3.forceSimulation()
     .force("charge", d3.forceManyBody().strength(-300))
     .on("tick", ticked);
 
+// set up nodes list
 
 nodes_list = []
 links_list = []
-
-addElements(nodes_list_start, links_list_start);
-
-var infobox_content = d3.select("#infobox").append("div").style("padding","10px");
-
 
  ///////////////////////////////////////////////
 ///////// Append nodes, links, labels  /////////
 ///////////////////////////////////////////////
 
-function addElements(new_nodes, new_links) {
+// add first elements
+addElements(nodes_list_start, links_list_start, children_directory, parents_directory);
+
+});
+////////////////////////////
+//         //\\           //
+//        //  \\          //
+//       //    \\         //
+//      //      \\        //
+//     ============       //
+//         | |            //
+//         | |            //
+//         | |            //
+//         | |            //
+//         ===            //
+//  This is the end of the//
+//  JSON promise!         //
+////////////////////////////
+
+// THIS IS A VERY LONG FUNCTION
+function addElements(new_nodes, new_links, children_directory, parents_directory) {
 
   nodes_list = nodes_list.concat(new_nodes)
   links_list = links_list.concat(new_links)
-
 
   ////// Links ///////
   
@@ -372,12 +367,11 @@ function addElements(new_nodes, new_links) {
 
 
         d.expanded = true;
-        addElements(new_nodes, new_links);
+        addElements(new_nodes, new_links, children_directory, parents_directory);
 
         var evt = new MouseEvent("mouseout");
         tooltip.style('opacity',0); // fade out tooltip
         d3.selectAll('.nodelabel').remove();
-        infobox_content.html(writeTree(nodes_list, links_list));
     });
 
     /////// Nodes: Labels //////
@@ -388,10 +382,6 @@ function addElements(new_nodes, new_links) {
       .attr('dy', '0px');
 
 node = nodeEnter.merge(node);
-  ////// Add infobox to contain node information ///////
-  /*var infobox =  d3.select("body").append("div")
-                    .attr('class','infobox')
-                    .attr('opacity',0);*/
 
  ///////////////////////////////////////////////
 ///////// Append Tooltip and Typelabels  /////////
@@ -404,35 +394,15 @@ var tooltip = d3.select("body").append("div")
 
   simulation.nodes(nodes_list);
   simulation.force("link").links(links_list);
-  simulation
-  .force("link", d3.forceLink().id(function(d) { return d.id; }).strength(0.1))
-  .force("collide", d3.forceCollide(function(d) { return node_radii[d.type] + 5; }).strength(0.7))
-  .force("centerline", d3.forceY(height/2).strength(0.5))
-  .force("column", d3.forceX(function (d) { return(x_positions[d.type]); }).strength(5))
-  .alpha(0.1)
-  .restart();
+  restartSimulation();
 
 
 } // END ADDELEMENTS FUNCTION
-
-////// Type labels for nodes ///////
-// this, below, is the worst code I have ever written
-svg
-  .selectAll(".typelabel")
-  .data(['Demand','Metric','Element','Dataset','Source'])
-  .enter()
-  .append("text")
-  .attr("class","typelabel")
-  .text(function(x) { return(x)})
-  .attr('x', function(d) { return(x_positions[d.toLowerCase()] - this.getBBox().width/2)}) // text is written from left to right -- move it back left by half its width to center it
-  .attr('y', '10%')
-  .style('fill',function(d) { return({"demand":"#CFAA95","metric":"#CFB995","element":"#657588","dataset":"#7D6288","source":"#62887D"}[d.toLowerCase()]); });
 
 
 ///////////////////////////////////////////////
 ///////////////// Listeners  //////////////////
 ///////////////////////////////////////////////
-
 
   // keydown handlers
   d3.select("body")
@@ -462,16 +432,12 @@ svg
           circle.classed("highlighted", false);
     })
 
-  /////////////////////////////////////
-  // Functions - inside promise//
-  /////////////////////////////////////
+  d3.select(window).on("resize", function() {resize()});
 
+///////////////////////////////////////////////
+///////////////// Functions  //////////////////
+///////////////////////////////////////////////
 
-  // Fill infobox with info
-  function tooltip_fill(node) {
-    filler = "<b>" + node.label + "</b><p>" + node.description + "</p>"
-    return(filler)
-  }
 
   // Reposition nodes on tick of force simulation
   function ticked() {
@@ -501,7 +467,12 @@ svg
 
   }
 
-  d3.select(window).on("resize", function() {resize()});
+  // Fill infobox with info
+  function tooltip_fill(node) {
+    filler = "<b>" + node.label + "</b><p>" + node.description + "</p>"
+    return(filler)
+  }
+
 
   // reposition nodes and labels and restart simulation on window
   function resize() {
@@ -515,13 +486,7 @@ svg
     x_positions = {"demand":width/6,"metric":2*width/6,"element":3*width/6, "dataset":4*width/6, "source":5*width/6}; // reset node type columns
 
     // restart simulation
-    simulation
-    .force("link", d3.forceLink().id(function(d) { return d.id; }).strength(0.1))
-    .force("collide", d3.forceCollide(function(d) { return node_radii[d.type] + 5; }).strength(0.7))
-    .force("centerline", d3.forceY(height/2).strength(0.5))
-    .force("column", d3.forceX(function (d) { return(x_positions[d.type]); }).strength(5))
-    .alpha(0.1)
-    .restart();
+    restartSimulation();
 
     // replace node type labels
     // replace node column labels
@@ -531,45 +496,16 @@ svg
 
   }
 
-  function moveLabels() {
-    d3.selectAll(".nodelabel")
-      .attr('dx','-30px');
-  }
 
-});
-////////////////////////////
-//         //\\           //
-//        //  \\          //
-//       //    \\         //
-//      //      \\        //
-//     ============       //
-//         | |            //
-//         | |            //
-//         | |            //
-//         | |            //
-//         ===            //
-//  This is the end of the//
-//  JSON promise!         //
-////////////////////////////
-
-  function writeTree(current_nodes, current_Links) {
-    var html = ""
-    var color_dict = {"demand":"#CFAA95","metric":"#CFB995","element":"#657588","dataset":"#7D6288","source":"#62887D"};
-    var current_nodes = current_nodes.filter(function(x) { return(x.expanded == true || x.type != "demand") });
-
-    var demands = current_nodes.filter(function(x) { return(x.type == "demand")});
-
-    for (let node in current_nodes) {
-      current_node = current_nodes[node];
-      var html = html + "<b style = 'color:" + color_dict[current_node['type']] + "'>" + current_node['label'] + "</b><br><br>";
-    }
-    console.log(html);
-    return(html)
-  }
-
-  /////////////////////////////////////
-  // More Functions: outside promise//
-  /////////////////////////////////////
+function restartSimulation() {
+    simulation
+    .force("link", d3.forceLink().id(function(d) { return d.id; }).strength(0.1))
+    .force("collide", d3.forceCollide(function(d) { return node_radii[d.type] + 5; }).strength(0.7))
+    .force("centerline", d3.forceY(height/2).strength(0.5))
+    .force("column", d3.forceX(function (d) { return(x_positions[d.type]); }).strength(5))
+    .alpha(0.1)
+    .restart();
+}
 
 /* We want to be able to fit as many nodes vertically in the window as we can as long as they're >2px in radius
 and as long as they have >2px between them. So we size nodes according to the number of nodes. */
