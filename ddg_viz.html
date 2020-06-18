@@ -12,7 +12,7 @@ h1 {
 
 body {
   font-family:"Raleway";
-  background-color:#DDECFE;
+  background-color:#E3F0F2;
 }
 
 #pagetitle {
@@ -39,7 +39,6 @@ body {
   font-weight: 700;
   /*fill: #555;*/
 }
-
 
 .demand {
   stroke:#CFAA95;
@@ -87,6 +86,7 @@ body {
     border-radius: 8px;     
     pointer-events: none;     
 }
+
 #viewport {
   position:absolute;
   top:10%;
@@ -119,7 +119,7 @@ body {
   <div id="logo">
     <img src="brighthive_logo.png" id="logo_image">
   </div>
-  <h1 id="pagetitle">Data Flow Explorer</h1>
+  <h1 id="pagetitle">Data Dependency Graph Explorer</h1>
       <div id="viewport"></div>
 </div>
 <script>
@@ -147,7 +147,7 @@ var svg = d3.select("#viewport").append("svg")
     .attr("width", width)
     .attr("height", height);
 
-var node_radii = {'demand':0,'metric':0,'element':0,'dataset':0,'source':0};
+var node_radii = {'demand':25,'metric':15,'element':10,'dataset':8,'source':5};
 
  ///////////////////////////////////////////////
 ///////// Main promise on JSON load  ///////////
@@ -160,18 +160,19 @@ d3.json("edgelist.json").then(function(graph) {
 ///  Set up node radii and link directories  ///
 ///////////////////////////////////////////////
   nodes_list_full = graph.nodes;
+  console.log(nodes_list_full.filter(function(x) { return(x.id=="element_1")}));
   links_list_full = graph.links;
 
   // Get node radii based on how many nodes there are of each type
   // Loop over node types. Send along the list of nodes to calculateForces and then set the radius according to how many there are.
-  for (var type in node_radii) {
+  /*for (var type in node_radii) {
     node_radii[type] = calculateForces(nodes_list_full.filter(function(x) { return(x.type == type) }).length, height);
-  }
+  }*/
 
   // Set up these dictionaries: they will store children and parent nodes (respectively) of mouseover'd nodes
   // These are first-degree connections only; we do a search on mouseover instead of building out all paths at load time
-  var children_directory = {}; // right now this is just first degree connections
-  var parents_directory = {};
+  children_directory = {}; // right now this is just first degree connections
+  parents_directory = {};
 
   // create children and parents directories
   links_list_full.forEach(function (d) {
@@ -191,8 +192,12 @@ d3.json("edgelist.json").then(function(graph) {
   });
 
     // initial -- demand nodes only
+  //var manual_start_nodes = ['question_9','question_23','question_29'];
+  var manual_start_nodes = ['question_19','question_22','question_23']
+
   var start_node_ids = []
-  var nodes_list_start = nodes_list_full.filter(function (x) { if(x.type == "demand") { start_node_ids.push(x['id']) } ;return (x.type == "demand")});
+  //var nodes_list_start = nodes_list_full.filter(function (x) { if(x.type == "demand") { start_node_ids.push(x['id']) } ;return (x.type == "demand")});
+  var nodes_list_start = nodes_list_full.filter(function(x) { return(manual_start_nodes.includes(x['id']))});
   var links_list_start = []
 
 
@@ -362,9 +367,11 @@ function addElements(new_nodes, new_links, children_directory, parents_directory
           //label.remove(); // remove labels
         }
         d3.event.stopPropagation();
-        var new_nodes = nodes_list_full.filter(function(x) { return((current_fadechain.includes(x.id)))});
-        var new_links = links_list_full.filter(function(x) { return(current_fadechain.includes(x.source)); } );
 
+        console.log(nodes_list_full);
+
+        var new_nodes = nodes_list_full.filter(function(x) { return(current_fadechain.includes(x['id']))});
+        var new_links = links_list_full.filter(function(x) { return(current_fadechain.includes(x.source)); } );
 
         d.expanded = true;
         addElements(new_nodes, new_links, children_directory, parents_directory);
@@ -469,7 +476,7 @@ var tooltip = d3.select("body").append("div")
 
   // Fill infobox with info
   function tooltip_fill(node) {
-    filler = "<b>" + node.label + "</b><p>" + node.description + "</p>"
+    filler = "<b>" + node.label + "</b><p>";// + node.description + "</p>"
     return(filler)
   }
 
@@ -520,7 +527,28 @@ function calculateForces(num_nodes, window_height) {
 }
 
 /* For a given node, and a dictionaruy giving first-degree targets for all nodes,
-this function will find all downstream nodes. It's basically a kind of hacky breadth-first search. */
+this function will find all downstream nodes. It's basically a kind of hacky depth-first search. */
+/*function getChildren(parent_node_name, children_directory) {
+  var tocheck = [parent_node_name];
+  var checked = [];
+  var all_children = [];
+
+  for (i = 0; i <= tocheck.length; i++) {
+    var item = tocheck[i];
+    var children = children_directory[item];
+
+    if (typeof children == 'undefined') {
+      children = [];
+    }
+
+    var unchecked = children.filter(function(x) { return(!tocheck.includes(x))});
+    all_children = all_children.concat(unchecked);
+    tocheck = tocheck.concat(unchecked);
+  }
+  return(all_children);
+}*/
+
+
 function getChildren(parent_node_name, children_directory) {
   var current_children = [parent_node_name];
 
@@ -528,7 +556,8 @@ function getChildren(parent_node_name, children_directory) {
     var new_children = children_directory[current_children[i]];
 
     if (typeof new_children != 'undefined') {
-      current_children = current_children.concat(new_children);
+      var actually_new = new_children.filter(function(x) { return(!current_children.includes(x))});
+      current_children = current_children.concat(actually_new);
     } else {
       current_children = current_children;
     }
@@ -558,4 +587,4 @@ function dragended(d) {
 
 </script>
 </body>
-</html
+</html>
